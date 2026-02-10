@@ -7,6 +7,5 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const isSupabaseConfigured = () => {
-    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY &&
-        SUPABASE_URL !== 'https://donyytroqwwsxfqfzowd.supabase.co';
+    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
 };
