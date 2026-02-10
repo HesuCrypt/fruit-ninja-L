@@ -55,6 +55,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
     const floatingTextsRef = useRef<FloatingText[]>([]);
 
     const scoreRef = useRef<number>(0);
+    const scoreMaskRef = useRef<number>(0); // Anti-memory-hack mask
+    const integrityRef = useRef<number>(0); // Checksum
+
     const livesRef = useRef<number>(3);
     const comboRef = useRef<{ count: number, timer: number }>({ count: 0, timer: 0 });
     const timeRef = useRef<number>(0);
@@ -80,6 +83,30 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
     const isDraggingRef = useRef<boolean>(false);
     const lastMousePosRef = useRef<{ x: number, y: number } | null>(null);
     const isGameOverProcessing = useRef<boolean>(false);
+
+    // Helper to generate a simple integrity token
+    const generateToken = useCallback((score: number, lives: number, time: number) => {
+        // Very simple obfuscated hash (not crypto secure but stops basic scripts)
+        const secret = "issy-fruit-salt-2024";
+        const str = `${score}-${lives}-${time}-${secret}`;
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash |= 0;
+        }
+        return hash.toString(36);
+    }, []);
+
+    const updateScore = useCallback((amount: number) => {
+        // Obfuscated update
+        const trueScore = scoreRef.current ^ scoreMaskRef.current;
+        const newScore = trueScore + amount;
+        scoreRef.current = newScore ^ scoreMaskRef.current;
+
+        // Update checksum
+        integrityRef.current = (integrityRef.current + amount) ^ 0xAF;
+    }, []);
 
     // --- LEADERBOARD FETCHING ---
     useEffect(() => {
@@ -109,7 +136,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
 
     // Determine next target score based on current score
     const updateNextTarget = useCallback(() => {
-        const current = scoreRef.current;
+        const current = scoreRef.current ^ scoreMaskRef.current;
         const scores = leaderboardScoresRef.current;
 
         // Find the smallest score that is strictly greater than current
@@ -132,7 +159,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
         particlesRef.current = [];
         trailRef.current = [];
         floatingTextsRef.current = [];
-        scoreRef.current = 0;
+
+        // Reset score with new random mask
+        scoreMaskRef.current = Math.floor(Math.random() * 0xFFFFFF);
+        scoreRef.current = 0 ^ scoreMaskRef.current;
+        integrityRef.current = 0;
+
         livesRef.current = 3;
         comboRef.current = { count: 0, timer: 0 };
         timeRef.current = 0;
@@ -157,10 +189,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
             level: 1,
             isFrenzy: false,
             frenzyProgress: 0,
-            nextTargetScore: nextTargetScoreRef.current
+            nextTargetScore: nextTargetScoreRef.current,
+            validationToken: generateToken(0, 3, 0)
         });
         soundEngine.init();
-    }, [onScoreUpdate, updateNextTarget]);
+    }, [onScoreUpdate, updateNextTarget, generateToken]);
 
     const update = useCallback(() => {
         if (gameState !== GameState.PLAYING) return;
@@ -195,15 +228,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
             // If frenzy just ended
             if (frenzyTimerRef.current === 0) {
                 frenzyChargeRef.current = 0; // Reset charge
+                const currentScore = scoreRef.current ^ scoreMaskRef.current;
                 onScoreUpdate({
-                    score: scoreRef.current,
+                    score: currentScore,
                     highScore: 0,
                     combo: comboRef.current.count,
                     lives: livesRef.current,
                     level: currentLevelRef.current,
                     isFrenzy: false,
                     frenzyProgress: 0,
-                    nextTargetScore: nextTargetScoreRef.current
+                    nextTargetScore: nextTargetScoreRef.current,
+                    validationToken: generateToken(currentScore, livesRef.current, timeRef.current)
                 });
             }
         }
@@ -214,8 +249,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
 
         // Level Logic
         let newLevel = 1;
+        const currentScore = scoreRef.current ^ scoreMaskRef.current;
         for (let i = 0; i < LEVELS.length; i++) {
-            if (scoreRef.current >= LEVELS[i].threshold) {
+            if (currentScore >= LEVELS[i].threshold) {
                 newLevel = i + 1;
             }
         }
@@ -242,15 +278,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
             : frenzyChargeRef.current / FRENZY_CHARGE_MAX;
 
         if (timeRef.current % 3 === 0) {
+            const currentScore = scoreRef.current ^ scoreMaskRef.current;
             onScoreUpdate({
-                score: scoreRef.current,
+                score: currentScore,
                 highScore: 0,
                 combo: comboRef.current.count,
                 lives: livesRef.current,
                 level: currentLevelRef.current,
                 isFrenzy: isFrenzy,
                 frenzyProgress: progress,
-                nextTargetScore: nextTargetScoreRef.current
+                nextTargetScore: nextTargetScoreRef.current,
+                validationToken: generateToken(currentScore, livesRef.current, timeRef.current)
             });
         }
 
@@ -316,29 +354,25 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
                 }
             }
         }
-        entitiesRef.current = entitiesRef.current.filter(e => e.y <= CANVAS_HEIGHT + 100);
-
         // Update Parts
+        const gravityBase = GRAVITY * gravityMultiplier;
         slicedPartsRef.current.forEach(part => {
             part.x += part.vx;
             part.y += part.vy;
-            part.vy += GRAVITY * gravityMultiplier * 1.2;
+            part.vy += gravityBase * 1.2;
             part.rotation += part.rotationSpeed;
         });
-        slicedPartsRef.current = slicedPartsRef.current.filter(p => p.y <= CANVAS_HEIGHT + 100);
 
         // Update Particles
+        const pGravity = GRAVITY * 0.5;
         particlesRef.current.forEach(p => {
             p.x += p.vx;
             p.y += p.vy;
-            const g = p.gravity ?? (GRAVITY * 0.5);
-            const d = p.drag ?? 1;
-            p.vy += g;
-            p.vx *= d;
-            p.vy *= d;
+            p.vy += p.gravity ?? pGravity;
+            p.vx *= p.drag ?? 1;
+            p.vy *= p.drag ?? 1;
             p.life -= p.isDroplet ? 0.008 : 0.02;
         });
-        particlesRef.current = particlesRef.current.filter(p => p.life > 0);
 
         // Update Floating Texts
         floatingTextsRef.current.forEach(ft => {
@@ -347,10 +381,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
             ft.vy *= 0.95;
             ft.life -= 0.015;
         });
-        floatingTextsRef.current = floatingTextsRef.current.filter(ft => ft.life > 0);
 
         // Update Trail
-        trailRef.current = trailRef.current.map(p => ({ ...p, life: p.life - 1 })).filter(p => p.life > 0);
+        trailRef.current.forEach(p => p.life--);
+
+        // Performance: Batch cleanup every 10 frames
+        if (timeRef.current % 10 === 0) {
+            entitiesRef.current = entitiesRef.current.filter(e => e.y <= CANVAS_HEIGHT + 100);
+            slicedPartsRef.current = slicedPartsRef.current.filter(p => p.y <= CANVAS_HEIGHT + 100);
+            particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+            floatingTextsRef.current = floatingTextsRef.current.filter(ft => ft.life > 0);
+            trailRef.current = trailRef.current.filter(p => p.life > 0);
+        }
 
         // 3. Render
 
@@ -428,7 +470,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
 
         ctx.restore();
         requestRef.current = requestAnimationFrame(update);
-    }, [gameState, setGameState, onScoreUpdate, settings, updateNextTarget]);
+    }, [gameState, setGameState, onScoreUpdate, settings, updateNextTarget, generateToken]);
 
     const getCanvasCoordinates = (clientX: number, clientY: number) => {
         const canvas = canvasRef.current;
@@ -536,7 +578,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
                     if (frenzyTimerRef.current > 0) baseScore *= 2;
 
                     const finalScore = baseScore * multiplier;
-                    scoreRef.current += finalScore;
+                    updateScore(finalScore);
 
                     // Check ranking
                     updateNextTarget();

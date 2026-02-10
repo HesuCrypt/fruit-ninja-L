@@ -109,6 +109,7 @@ export interface ScoreConfig {
   isFrenzy: boolean;
   frenzyProgress: number; // 0 to 1 (Charge or Duration remaining)
   nextTargetScore: number | null; // Score to beat for next rank
+  validationToken?: string; // Anti-hack integrity token
 }
 
 export type SpriteMap = number[][];

@@ -5,11 +5,12 @@ import { soundEngine } from '../../utils/soundEngine';
 
 interface GameOverProps {
     score: number;
+    validationToken?: string;
     onRestart: () => void;
     onHome: () => void;
 }
 
-const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
+const GameOver: React.FC<GameOverProps> = ({ score, validationToken, onRestart, onHome }) => {
     // Load stored username, ensure it doesn't have @ for the state (we add it in UI)
     const [username, setUsername] = useState(() => {
         const stored = localStorage.getItem('issy_username') || '';
@@ -18,6 +19,7 @@ const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
 
     const [submitted, setSubmitted] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [lastSubmitTime, setLastSubmitTime] = useState(0);
 
     useEffect(() => {
         soundEngine.playGameOverTune();
@@ -30,6 +32,18 @@ const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
 
     const handleSubmitScore = async (isAuto = false) => {
         if (!isAuto) soundEngine.playClick();
+
+        // Anti-hack: Check for token
+        if (!validationToken) {
+            console.warn("Score rejected: Missing validation token.");
+            return;
+        }
+
+        // Rate limiting: 2 seconds between manual attempts
+        const now = Date.now();
+        if (!isAuto && now - lastSubmitTime < 2000) return;
+        setLastSubmitTime(now);
+
         if (!username.trim() || !isSupabaseConfigured() || isSubmitting || submitted) return;
 
         setIsSubmitting(true);
