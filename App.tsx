@@ -109,7 +109,6 @@ function App() {
         {gameState === GameState.GAME_OVER && (
           <GameOver
             score={scoreConfig.score}
-            validationToken={scoreConfig.validationToken}
             onRestart={startGame}
             onHome={goToMenu}
           />
