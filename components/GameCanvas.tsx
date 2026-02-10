@@ -385,9 +385,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onScor
         // Update Trail
         trailRef.current.forEach(p => p.life--);
 
-        // Performance: Batch cleanup every 10 frames
+        // Cleanup
+        // CRITICAL: Entities MUST be filtered every frame, otherwise missedFruits will subtract lives 
+        // for several frames before the entity is removed!
+        entitiesRef.current = entitiesRef.current.filter(e => e.y <= CANVAS_HEIGHT + 100);
+
+        // Visual-only elements can be batched every 10 frames for performance
         if (timeRef.current % 10 === 0) {
-            entitiesRef.current = entitiesRef.current.filter(e => e.y <= CANVAS_HEIGHT + 100);
             slicedPartsRef.current = slicedPartsRef.current.filter(p => p.y <= CANVAS_HEIGHT + 100);
             particlesRef.current = particlesRef.current.filter(p => p.life > 0);
             floatingTextsRef.current = floatingTextsRef.current.filter(ft => ft.life > 0);
