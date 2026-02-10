@@ -39,7 +39,13 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ onBack }) => {
 
                 if (data) {
                     for (const entry of data) {
-                        const normalizedName = entry.username.toUpperCase().trim();
+                        // Normalize by stripping leading @ for unique comparison
+                        let normalizedName = entry.username.trim();
+                        if (normalizedName.startsWith('@')) {
+                            normalizedName = normalizedName.substring(1);
+                        }
+                        normalizedName = normalizedName.toUpperCase();
+
                         if (!seenUsernames.has(normalizedName)) {
                             seenUsernames.add(normalizedName);
                             uniqueScores.push(entry);
@@ -151,7 +157,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ onBack }) => {
                                     key={index}
                                     className={`flex items-center bg-issy-darkCard p-3 border-2 ${borderColor} shadow-[4px_4px_0_0_rgba(0,0,0,0.5)] transform hover:-translate-y-1 transition-transform`}
                                 >
-                                    <div className={`w-10 text-center text-xl font-bold ${rankColor} drop-shadow-md`}>
+                                    <div className={`w-12 sm:w-14 text-center text-lg sm:text-xl font-bold ${rankColor} drop-shadow-md shrink-0`}>
                                         #{index + 1}
                                     </div>
                                     <div className="flex-1 px-4 flex flex-col">
