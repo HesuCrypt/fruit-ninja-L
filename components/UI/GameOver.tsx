@@ -21,11 +21,16 @@ const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
 
     useEffect(() => {
         soundEngine.playGameOverTune();
+
+        // Auto-save if username exists
+        if (username.trim() && isSupabaseConfigured()) {
+            handleSubmitScore(true);
+        }
     }, []);
 
-    const handleSubmitScore = async () => {
-        soundEngine.playClick();
-        if (!username.trim() || !isSupabaseConfigured()) return;
+    const handleSubmitScore = async (isAuto = false) => {
+        if (!isAuto) soundEngine.playClick();
+        if (!username.trim() || !isSupabaseConfigured() || isSubmitting || submitted) return;
 
         setIsSubmitting(true);
         try {
@@ -51,19 +56,13 @@ const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
                     // Only update if current score is better
                     const { error: updateError } = await supabase
                         .from('leaderboard')
-                        .insert([{ username: displayUsername, score: score }]); // Still inserting for now to keep history, but UI will filter. 
-                    // Actually, user wants to REMOVE repeating, so maybe we should upsert or just update?
-                    // If I use upsert, I need a unique constraint or use update with match.
-                    // Let's stick to the plan: UI filters, but we can also try to be cleaner here.
-                    // If I insert every time, the DB grows. If I update, it stays small.
-                    // User said "remove repeating account in leaderboard", which implies they don't want to see it twice.
-                    // I'll try to find the record and update it if it exists.
+                        .insert([{ username: displayUsername, score: score }]);
 
                     if (updateError) throw updateError;
                     setSubmitted(true);
                     soundEngine.playLevelUp();
                 } else {
-                    // Score is lower or equal, just mark as submitted so they don't keep clicking
+                    // Score is lower or equal, just mark as submitted
                     setSubmitted(true);
                 }
             } else {
@@ -78,7 +77,7 @@ const GameOver: React.FC<GameOverProps> = ({ score, onRestart, onHome }) => {
             }
         } catch (err) {
             console.error("Error submitting score:", err);
-            alert("Could not save score. Check connection.");
+            if (!isAuto) alert("Could not save score. Check connection.");
         } finally {
             setIsSubmitting(false);
         }
